@@ -1,0 +1,54 @@
+{
+  "name": "node-api-seed",
+  "version": "1.0.0",
+  "engines": {
+    "node": "12.13.0",
+    "npm": "6.12.0"
+  },
+  "description": "Boilerplate API NodeJS",
+  "author": "Lic. Mauro Suarez, Ing. Charles Rodriguez",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:charlescart/node-restserver.git"
+  },
+  "main": "app.js",
+  "scripts": {
+    "start": "nodemon -r dotenv/config src/app.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "development": "node-dev -r dotenv/config src/app.js",
+    "nodemon": "nodemon -r dotenv/config src/app.js -e js,html,hbs,css,json,env"
+  },
+  "dependencies": {
+    "axios": "^0.19.2",
+    "bcryptjs": "^2.4.3",
+    "body-parser": "^1.19.0",
+    "celebrate": "^12.1.0",
+    "cors": "^2.8.5",
+    "dotenv": "^8.2.0",
+    "eslint": "^6.8.0",
+    "eslint-config-airbnb-base": "^14.1.0",
+    "eslint-plugin-import": "^2.20.2",
+    "express": "^4.17.1",
+    "express-fileupload": "^1.1.6",
+    "express-rate-limit": "^5.1.1",
+    "google-auth-library": "^6.0.0",
+    "jest": "^25.4.0",
+    "jsonwebtoken": "^8.5.1",
+    "lodash": "^4.17.15",
+    "moment": "^2.24.0",
+    "mongoose": "^5.9.10",
+    "mongoose-unique-validator": "^2.0.3",
+    "morgan": "^1.10.0",
+    "mysql2": "^2.1.0",
+    "node-fetch": "^2.6.0",
+    "node-geocoder": "^3.27.0",
+    "nodemon": "^2.0.3",
+    "npm-check-updates": "^4.1.2",
+    "path": "^0.12.7",
+    "reflect-metadata": "^0.1.13",
+    "sequelize": "^5.21.7",
+    "uuid": "^7.0.3",
+    "winston": "^3.2.1"
+  }
+}

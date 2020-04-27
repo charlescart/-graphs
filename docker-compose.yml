@@ -1,0 +1,25 @@
+version: '2'
+
+services:
+  node:
+    image: node:10.15.0
+    container_name: api-express
+    working_dir: /project
+    restart: always
+    ports:
+      - "8081:8081"
+    tty: true
+    depends_on:
+      - mongo
+    volumes:
+      - /home/mauro/projects/express/:/project
+    external_links:
+      - databases:mysql
+    links:
+      - mongo
+
+  mongo:
+    container_name: mongo
+    image: mongo
+    volumes:
+      - /home/mauro/projects/express/.docker/mongo-db/data/:/data/db
