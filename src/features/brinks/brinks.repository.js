@@ -13,8 +13,8 @@ const {
 
 const brinksRepository = {
   algorithm: async (req) => {
-    const { nodes } = req.body;
-    const { hourDeparture } = req.body;
+    const { nodes, hourDeparture } = req.body;
+    // const { hourDeparture } = req.body;
 
     // eslint-disable-next-line no-useless-catch
     // try {
@@ -26,6 +26,9 @@ const brinksRepository = {
 
     /* tomo el node de orden cero, este siempre es el primero del array */
     const nodeRoot = nodes.shift();
+
+    /* Proximo nodo seleccionado */
+    let indexNodeSelect;
 
     /* nodos no cumplidos */
     const unfulfilledNodes = [];
@@ -69,6 +72,14 @@ const brinksRepository = {
         /* verifica si pase la franja horaria en el tiempo de llegada con trafico */
         const expiredTimeSlot = await checkExpiredTimeSlot(currentTime, timeInTraffic, firstStrip);
 
+        /* identificando a los nodos con los que no se podrá cumplir */
+        if (expiredTimeSlot && numberBands <= 0) {
+          const nodePull = nodes.splice(i, 1);
+          unfulfilledNodes.push(nodePull[0]);
+          continue;
+        }
+        /* fin de la identificacion de nodos no cumplidos */
+
         /* llega dentro de la franja horaria? */
         const arrival = await getArrival(node, currentTime, timeInTraffic, firstStrip);
 
@@ -89,28 +100,8 @@ const brinksRepository = {
           expiredTimeSlot: ${expiredTimeSlot}`);
 
         console.log(node);
-      }
 
-      /* identificando a los nodos con los que no se podrá cumplir */
-      nodes.forEach((node, i, array) => {
-        /* solo nodos disponibles  sin superposicion */
-        if (!node.blocked) {
-          const { expiredTimeSlot, numberBands } = node.analysis;
-
-          /* se identifican los nodos caducados y se llevan a un array aparte */
-          if (expiredTimeSlot && numberBands <= 0) unfulfilledNodes.push(array.splice(i, 1));
-        }
-      });
-      /* fin de la identificacion de nodos no cumplidos */
-
-      // TODO: esto puede ir dentro del primer for
-      /* identificando el nodo mas urgente */
-      let indexNodeSelect;
-
-      for (let i = 0; i < nodes.length; i += 1) {
-        /* solo eligo entre los nodos disponibles */
-        if (nodes[i].blocked) continue;
-
+        /* identificando el nodo mas urgente */
         /* si no se ha inicializado la variable indexNode */
         if (indexNodeSelect === undefined) {
           indexNodeSelect = i;
@@ -139,8 +130,23 @@ const brinksRepository = {
             if (proirityA >= priorityB) indexNodeSelect = i; // el de prioridad max urgente
           }
         }
+        /* fin de identificacion del nodo mas urgente */
+
+
       }
-      /* fin de identificacion del nodo mas urgente */
+
+      // // TODO: esto puede ir en la vuelta del for de arriba
+      // /* identificando a los nodos con los que no se podrá cumplir */
+      // nodes.forEach((node, i, array) => {
+      //   /* solo nodos disponibles  sin superposicion */
+      //   if (!node.blocked) {
+      //     const { expiredTimeSlot, numberBands } = node.analysis;
+
+      //     /* se identifican los nodos caducados y se llevan a un array aparte */
+      //     if (expiredTimeSlot && numberBands <= 0) unfulfilledNodes.push(array.splice(i, 1));
+      //   }
+      // });
+      // /* fin de la identificacion de nodos no cumplidos */
 
       console.log(`urgente:`, nodes[indexNodeSelect]);
 
