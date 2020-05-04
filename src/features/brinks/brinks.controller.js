@@ -1,10 +1,9 @@
 /* eslint-disable quotes */
 /* eslint-disable no-console */
-// eslint-disable-next-line no-unused-vars
-
 const brinksRepository = require("./brinks.repository");
 
 const brinksController = {
+  // eslint-disable-next-line arrow-body-style
   algorithm: async (req, res, next) => {
     return brinksRepository.algorithm(req);
   },

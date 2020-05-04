@@ -13,7 +13,7 @@ const {
 
 const brinksRepository = {
   algorithm: async (req) => {
-    let { nodes } = req.body;
+    const { nodes } = req.body;
     const { hourDeparture } = req.body;
 
     // eslint-disable-next-line no-useless-catch
@@ -25,7 +25,7 @@ const brinksRepository = {
     const currentTime = moment.duration(hourDeparture);
 
     /* tomo el node de orden cero, este siempre es el primero del array */
-    let nodeRoot = nodes.shift();
+    const nodeRoot = nodes.shift();
 
     /* nodos no cumplidos */
     const unfulfilledNodes = [];
@@ -103,18 +103,46 @@ const brinksRepository = {
       });
       /* fin de la identificacion de nodos no cumplidos */
 
+      // TODO: esto puede ir dentro del primer for
       /* identificando el nodo mas urgente */
-      // for (let i = 0; i < nodes.length; i += 1) {
+      let indexNodeSelect;
 
-      /* solo eligo entre los nodos disponibles */
-      // if (nodes[i].blocked) continue;
+      for (let i = 0; i < nodes.length; i += 1) {
+        /* solo eligo entre los nodos disponibles */
+        if (nodes[i].blocked) continue;
 
-      // if (nodeA.analysis.timeProximity < nodeB.analysis.timeProximity)
+        /* si no se ha inicializado la variable indexNode */
+        if (indexNodeSelect === undefined) {
+          indexNodeSelect = i;
+          continue; // porque apenas se inicializa
+        }
 
-      // };
+        const nodeA = moment.duration(nodes[indexNodeSelect].analysis.timeProximity);
+        const nodeB = moment.duration(nodes[i].analysis.timeProximity);
 
-      // console.log(nodeSelect);
+        /* si el nodo A está mas lejano de la franja horaria que el B, me quedo con el B */
+        if (nodeA.asSeconds() > nodeB.asSeconds()) {
+          indexNodeSelect = i; // el nodo mas cercano a la hora de partida
+        } else if (nodeA.asSeconds() === nodeB.asSeconds()) {
+          /* decidir empate de cercania por propiedad numberBands */
+
+          /* si la cercania es igual decide el nro de franjas horarias disponibles */
+          const numberBandsA = nodes[indexNodeSelect].analysis.numberBands;
+          const numberBandsB = nodes[i].analysis.numberBands;
+
+          if (numberBandsA > numberBandsB) {
+            indexNodeSelect = i; // el nodo con menos franjas horarias disponibles
+          } else if (numberBandsA === numberBandsB) { // decidir empate de numberBands por prioridad
+            const proirityA = nodes[indexNodeSelect].priority;
+            const priorityB = nodes[i].priority;
+
+            if (proirityA >= priorityB) indexNodeSelect = i; // el de prioridad max urgente
+          }
+        }
+      }
       /* fin de identificacion del nodo mas urgente */
+
+      console.log(`urgente:`, nodes[indexNodeSelect]);
 
     } while (false);
 
