@@ -1,3 +1,4 @@
+/* eslint-disable no-continue */
 const moment = require('moment');
 const fetch = require('node-fetch');
 
@@ -54,7 +55,7 @@ const brinksService = {
     time.add(currentTime);
     time = time.format('YYYY-MM-DDTHH:mm:ss');
 
-    const timeInTraffic = await fetch(`${baseUrl}transportMode=car&origin=${nodeA.coordinates.lat},${nodeB.coordinates.lng}&destination=${nodeB.coordinates.lat},${nodeB.coordinates.lng}&return=summary&departureTime=${time}&apiKey=${apiKey}`)
+    const timeInTraffic = await fetch(`${baseUrl}transportMode=car&origin=${nodeA.coordinates.lat},${nodeA.coordinates.lng}&destination=${nodeB.coordinates.lat},${nodeB.coordinates.lng}&return=summary&departureTime=${time}&apiKey=${apiKey}`)
       .then((res) => res.json())
       .then((res) => res.routes[0].sections[0].summary.duration);
 
@@ -98,6 +99,64 @@ const brinksService = {
 
     /* si la hora en la que llega es mayor a la hora final de la franja, la franja ya ha vencido */
     return hourArrival > firstStrip.end;
+  },
+
+  /* description */
+  complianceWithZeroBandNodes: async (nodes, indexNodeSelect, nodesBandsZero, currentDate) => {
+    let indexNodeZero;
+    const unfulfilledNodes = [];
+    const nodeA = nodes[indexNodeSelect];
+    const { hourDeparture } = nodeA.analysis;
+
+    for (let i = 0; i < nodesBandsZero.length; i += 1) {
+      const nodeB = nodes[nodesBandsZero[i]];
+
+      // eslint-disable-next-line no-await-in-loop
+      const timeInTraffic = await brinksService
+        .getDurationInTraffic(nodeA, nodeB, currentDate, hourDeparture);
+
+      const hourArrival = hourDeparture.clone();
+      hourArrival.add(timeInTraffic);
+
+      /* si la hora de arrival es mayor a la hora final de la franja, la franja ya ha vencido */
+      const expiredTimeSlot = hourArrival > nodeB.analysis.firstStrip.end;
+      if (expiredTimeSlot) unfulfilledNodes.push({ expiredTimeSlot, index: nodesBandsZero[i] });
+    }
+
+    /* eleccion con de nodo con mas prioridad */
+    for (let i = 0; i < unfulfilledNodes.length; i += 1) {
+      if (indexNodeZero === undefined) {
+        indexNodeZero = unfulfilledNodes[i].index;
+        continue;
+      }
+      const nodeZeroA = nodes[indexNodeZero];
+      const nodeZeroB = nodes[unfulfilledNodes[i].index];
+
+      // el de prioridad max urgente
+      if (nodeZeroA.priority > nodeZeroB.priority) {
+        indexNodeZero = unfulfilledNodes[i].index; // nodo mas prioritario
+      } else if (nodeZeroA.priority === nodeZeroB.priority) { // en caso de empate de prioridad
+        if (nodeZeroA.analysis.timeBandWidth >= nodeZeroB.analysis.timeBandWidth) {
+          // se toma el de ancho de banda mas pequeña
+          indexNodeZero = unfulfilledNodes[i].index;
+        }
+      }
+    }
+    /* fin de eleccion con de nodo con mas prioridad */
+
+    return indexNodeZero;
+  },
+
+  /* description */
+  getNodesAvailabilitys: async (nodes) => {
+    let count = false;
+    for (let i = 0; i < nodes.length; i += 1) {
+      if (nodes[i].blocked) continue;
+      count = true;
+      i = nodes.length;
+    }
+
+    return count;
   },
 };
 
