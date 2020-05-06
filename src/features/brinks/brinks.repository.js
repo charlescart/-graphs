@@ -31,6 +31,8 @@ const brinksRepository = {
     const route = [nodeRoot];
 
     do {
+      /* +++ */
+      console.log(`# # # # # # # # # # # #`);
       /* Proximo nodo seleccionado */
       let indexNodeSelect;
       /* nodes con franjas horarias en cero */
@@ -39,30 +41,22 @@ const brinksRepository = {
       for (let i = 0; i < nodes.length; i += 1) {
         /* si el nodo está bloqueado no lo analizo */
         if (nodes[i].blocked) continue;
-
         const node = nodes[i];
-        // nodes.forEach(async node => {
-
-        /* calculo de cercania a la franja horaria */
-        // let timeToNode = getTimeProximity(nodeRoot, node);
 
         /* numero de franjas disponibles a partir de la hora de salida */
         const numberBands = await getNumberTimeBandsAvailabilitys(node, currentTime);
         if (numberBands === 0) nodesBandsZero.push(i);
 
         /* la franja horaria mas cercana con respecto a la hora de salida */
-
         const firstStrip = await getFirstStrip(node, currentTime);
 
         /* Cercania */
         const timeProximity = firstStrip.start.clone();
         timeProximity.subtract(currentTime);
-        // moment.duration(moment.duration(firstStrip.start).subtract(currentTime));
 
         /* Ancho de franja horaria de atencion */
         const timeBandWidth = firstStrip.end.clone();
         timeBandWidth.subtract(firstStrip.start);
-        // moment.duration(moment.duration(firstStrip.end) - moment.duration(firstStrip.start));
 
         /* si el tiempo de servicio va dentro de la franja horaria */
         if (node.serviceTimeWithin) timeBandWidth.subtract(moment.duration(node.serviceTime));
@@ -84,11 +78,14 @@ const brinksRepository = {
         /* llega dentro de la franja horaria? */
         const arrival = await getArrival(node, currentTime, timeInTraffic, firstStrip);
 
+        /* tiempo de serivico en el nodo */
         const serviceTime = moment.duration(node.serviceTime);
-        /* TODO: tengo un error, el serviceTime and the timePerStop se agrega
-        * en la hora de llegada solo si "arrival" is true, sino
-        * se agrega al inicio de la franja horaria.
-        */
+
+        /* hourBase si se llega al nodo dentro de la franja */
+        let hourBase = moment.duration(currentTime + timeInTraffic);
+        /* hourBase si se llega antes de la franja horaria */
+        if (!arrival && !expiredTimeSlot) hourBase = firstStrip.start.clone();
+
         node.analysis = {
           firstStrip,
           timeProximity,
@@ -98,7 +95,7 @@ const brinksRepository = {
           numberBands,
           expiredTimeSlot,
           hourArrival: moment.duration(currentTime + timeInTraffic),
-          hourDeparture: moment.duration(currentTime + timeInTraffic + timePerStop + serviceTime),
+          hourDeparture: moment.duration(hourBase + timePerStop + serviceTime),
           // blockedNode: item que indique si el nodo se superpone a otro
         };
 
@@ -107,7 +104,7 @@ const brinksRepository = {
           anchodefranja: ${timeBandWidth.asSeconds()}, ${firstStrip.start} - ${firstStrip.end}, numberBands: ${numberBands},
           expiredTimeSlot: ${expiredTimeSlot}`);
 
-        console.log(node);
+        // console.log(node);
 
         /* identificando el nodo mas urgente */
         /* si no se ha inicializado la variable indexNode */

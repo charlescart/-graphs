@@ -27,9 +27,12 @@ const brinksService = {
       const hourStartA = moment.duration(a.start);
       const hourStartB = moment.duration(b.start);
 
-      if (hourStartA < hourStartB) return a;
-      // eslint-disable-next-line no-else-return
-      else if (hourStartB >= currentTime) return b;
+      if (hourStartA < hourStartB) {
+        return a;
+        // eslint-disable-next-line no-else-return
+      } else if (hourStartB >= currentTime) {
+        return b;
+      }
 
       const hourEndB = moment.duration(b.end);
       /* si la franja venció entonces eliminamos dicha franja horaria */
