@@ -7,10 +7,9 @@ const {
   getFirstStrip,
   getDurationInTraffic,
   getArrival,
-  getNumberTimeBandsAvailabilitys,
-  checkExpiredTimeSlot,
   complianceWithZeroBandNodes,
   getNodesAvailabilitys,
+  getTrafficTimes,
 } = require("../../services/brinks.service");
 
 const brinksRepository = {
@@ -37,18 +36,52 @@ const brinksRepository = {
       let indexNodeSelect;
       /* nodes con franjas horarias en cero */
       let nodesBandsZero = [];
+      /* tiempos de nodo root contra todos los nodos disponibles */
+      const trafficTimes = await getTrafficTimes(nodeRoot, nodes, currentDate, currentTime);
+      // TODO: antes de hacer los gets filtrar y sacar los vencidos
+      console.log(trafficTimes);
 
       for (let i = 0; i < nodes.length; i += 1) {
         /* si el nodo está bloqueado no lo analizo */
         if (nodes[i].blocked) continue;
         const node = nodes[i];
 
-        /* numero de franjas disponibles a partir de la hora de salida */
-        const numberBands = await getNumberTimeBandsAvailabilitys(node, currentTime);
-        if (numberBands === 0) nodesBandsZero.push(i);
+        /* HORA DE LLEGADA AL NODO */
+        let timeInTraffic;
+        for (let j = 0; j < trafficTimes.length; j += 1) {
+          // el tiempo de trafico entre nodo root y este nodo
+          if (i === trafficTimes[j].index) {
+            timeInTraffic = trafficTimes[j].time;
+            break;
+          }
+        }
+        /* FIN DE HORA DE LLEGADA AL NODO */
+        // TODO: validar que timeInTraffic no sea undefined
+
+        /* NUMERO DE FRANJAS A PARTIR DE LA HORA DE PARTIDA */
+        // // const numberBands = getNumberTimeBandsAvailabilitys(node, currentTime);
+        // let numberBands = 0;
+        // for (let a = 0; a < node.attentionHour.length; a += 1) {
+        //   const timeBand = moment.duration(node.attentionHour[a].end);
+        //   if (moment.duration(currentTime + timeInTraffic) < timeBand) numberBands += 1;
+        // }
+        // /* le resto 1 para identificar cuantas restan, no tomar encuenta en la franja en curso */
+        // if (numberBands > 0) numberBands -= 1;
+        /* FIN DE NUMERO DE FRANJAS A PARTIR DE LA HORA DE PARTIDA */
+
 
         /* la franja horaria mas cercana con respecto a la hora de salida */
-        const firstStrip = await getFirstStrip(node, currentTime);
+        const { firstStrip, numberBands } = await getFirstStrip(node, currentTime, timeInTraffic);
+
+        /* este nodo es un unfulfilled */
+        if (firstStrip === undefined) {
+          const nodePull = nodes.splice(i, 1);
+          unfulfilledNodes.push(nodePull[0]);
+          continue;
+        }
+
+        /* nodos importantes */
+        if (numberBands === 0) nodesBandsZero.push(i);
 
         /* Cercania */
         const timeProximity = firstStrip.start.clone();
@@ -61,19 +94,8 @@ const brinksRepository = {
         /* si el tiempo de servicio va dentro de la franja horaria */
         if (node.serviceTimeWithin) timeBandWidth.subtract(moment.duration(node.serviceTime));
 
-        /* hora de llegada al nodo */
-        const timeInTraffic = await getDurationInTraffic(nodeRoot, node, currentDate, currentTime);
-
         /* verifica si pase la franja horaria en el tiempo de llegada con trafico */
-        const expiredTimeSlot = await checkExpiredTimeSlot(currentTime, timeInTraffic, firstStrip);
-
-        /* identificando a los nodos con los que no se podrá cumplir */
-        if (expiredTimeSlot && numberBands <= 0) {
-          const nodePull = nodes.splice(i, 1);
-          unfulfilledNodes.push(nodePull[0]);
-          continue;
-        }
-        /* fin de la identificacion de nodos no cumplidos */
+        // const expiredTimeSlot = await checkExpiredTimeSlot(currentTime, timeInTraffic, firstStrip);
 
         /* llega dentro de la franja horaria? */
         const arrival = await getArrival(node, currentTime, timeInTraffic, firstStrip);
@@ -84,7 +106,7 @@ const brinksRepository = {
         /* hourBase si se llega al nodo dentro de la franja */
         let hourBase = moment.duration(currentTime + timeInTraffic);
         /* hourBase si se llega antes de la franja horaria */
-        if (!arrival && !expiredTimeSlot) hourBase = firstStrip.start.clone();
+        if (!arrival) hourBase = firstStrip.start.clone();
 
         node.analysis = {
           firstStrip,
@@ -93,7 +115,6 @@ const brinksRepository = {
           timeInTraffic,
           arrival,
           numberBands,
-          expiredTimeSlot,
           hourArrival: moment.duration(currentTime + timeInTraffic),
           hourDeparture: moment.duration(hourBase + timePerStop + serviceTime),
           // blockedNode: item que indique si el nodo se superpone a otro
@@ -101,8 +122,7 @@ const brinksRepository = {
 
         console.log(`${node.description}: departure: ${currentTime} durationInTraffic: ${timeInTraffic.asSeconds()}
           timeArrival: ${moment.duration(currentTime + timeInTraffic)}, Arrival?: ${arrival}, Cercania: ${timeProximity.asSeconds()},
-          anchodefranja: ${timeBandWidth.asSeconds()}, ${firstStrip.start} - ${firstStrip.end}, numberBands: ${numberBands},
-          expiredTimeSlot: ${expiredTimeSlot}`);
+          anchodefranja: ${timeBandWidth.asSeconds()}, ${firstStrip.start} - ${firstStrip.end}, numberBands: ${numberBands}`);
 
         // console.log(node);
 
@@ -173,6 +193,31 @@ const brinksRepository = {
 
     unfulfilledNodes = unfulfilledNodes.concat(nodes);
     return { route, unfulfilledNodes };
+  },
+  promiseAll: async (req) => {
+    const { nodes, hourDeparture } = req.body;
+    /* fecha actual, para api traffic */
+    const currentDate = moment("00:00:00", "HH:mm:ss");
+    /* hora de partida */
+    const currentTime = moment.duration(hourDeparture);
+    /* tomo el node de orden cero, este siempre es el primero del array */
+    const nodeRoot = nodes.shift();
+
+    const promises = [];
+
+    console.time('for');
+    for (let i = 0; i < nodes.length; i += 1) {
+      if (nodes[i].blocked) continue;
+      promises.push(getDurationInTraffic(nodeRoot, nodes[i], currentDate, currentTime, i));
+    }
+
+    return Promise.all(promises)
+      .then((res) => {
+        console.log(res);
+        console.timeEnd('for');
+        return res;
+      })
+      .catch((err) => console.log(err));
   },
 };
 

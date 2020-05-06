@@ -22,35 +22,46 @@ const brinksService = {
   //   },
 
   /* description */
-  getFirstStrip: async (node, currentTime) => {
-    const firstStrip = node.attentionHour.reduce((a, b, index, attentionHours) => {
-      const hourStartA = moment.duration(a.start);
-      const hourStartB = moment.duration(b.start);
+  getFirstStrip: async (node, currentTime, timeInTraffic) => {
+    const hourArrival = currentTime.clone();
+    hourArrival.add(timeInTraffic);
+    let firstStrip;
+    let numberBands = 0;
 
-      if (hourStartA < hourStartB) {
-        return a;
-        // eslint-disable-next-line no-else-return
-      } else if (hourStartB >= currentTime) {
-        return b;
+    for (let i = 0; i < node.attentionHour.length; i += 1) {
+      const hourEnd = moment.duration(node.attentionHour[i].end).clone();
+      hourEnd.subtract(hourArrival);
+
+      if (hourEnd.asSeconds() < 0) continue;
+
+      // cuenta las bandas vidas
+      numberBands += 1;
+
+      if (firstStrip === undefined) {
+        firstStrip = node.attentionHour[i];
+        continue;
       }
 
-      const hourEndB = moment.duration(b.end);
-      /* si la franja venció entonces eliminamos dicha franja horaria */
-      if (hourEndB <= currentTime) attentionHours.splice(index, 1);
-      else return b;
+      const afterStrip = moment.duration(firstStrip.end);
+      afterStrip.subtract(hourArrival);
 
-      return a; // si eliminamos la franja horaria en el if, devuelvo la franja A
-    });
+      if (afterStrip > hourEnd) firstStrip = node.attentionHour[i];
+    }
 
     /* haciendo una duracion start and end */
-    firstStrip.start = moment.duration(firstStrip.start);
-    firstStrip.end = moment.duration(firstStrip.end);
+    if (firstStrip !== undefined) {
+      firstStrip.start = moment.duration(firstStrip.start);
+      firstStrip.end = moment.duration(firstStrip.end);
+    }
 
-    return firstStrip;
+    // no cuento la franja que se selecciono, solo las restantes.
+    if (numberBands > 0) numberBands -= 1;
+
+    return { firstStrip, numberBands };
   },
 
   /* description */
-  getDurationInTraffic: async (nodeA, nodeB, currentDate, currentTime) => {
+  getDurationInTraffic: async (nodeA, nodeB, currentDate, currentTime, index) => {
     const baseUrl = 'https://router.hereapi.com/v8/routes?';
     const apiKey = process.env.API_KEY_TRAFFIC;
 
@@ -62,8 +73,25 @@ const brinksService = {
       .then((res) => res.json())
       .then((res) => res.routes[0].sections[0].summary.duration);
 
-    return moment.duration(timeInTraffic, 'seconds');
+    return {
+      index,
+      time: moment.duration(timeInTraffic, 'seconds'),
+    };
   },
+
+  /* description */
+  getTrafficTimes: async (nodeRoot, nodes, currentDate, currentTime) => {
+    const trafficTimes = [];
+
+    for (let i = 0; i < nodes.length; i += 1) {
+      if (nodes[i].blocked) continue;
+      // eslint-disable-next-line max-len
+      trafficTimes.push(brinksService.getDurationInTraffic(nodeRoot, nodes[i], currentDate, currentTime, i));
+    }
+
+    return Promise.all(trafficTimes);
+  },
+
 
   /* description */
   getArrival: async (node, currentTime, durationInTraffic, firstStrip) => {
@@ -81,6 +109,7 @@ const brinksService = {
   },
 
   /* description */
+  // TODO: la no la uso
   getNumberTimeBandsAvailabilitys: async (node, currentTime) => {
     let numberBands = 0;
 
@@ -96,6 +125,7 @@ const brinksService = {
   },
 
   /* description */
+  // TODO: la no la uso
   checkExpiredTimeSlot: async (currentTime, durationInTraffic, firstStrip) => {
     const hourArrival = currentTime.clone();
     hourArrival.add(durationInTraffic);
