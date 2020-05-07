@@ -141,6 +141,7 @@ const brinksService = {
     const nodeA = nodes[indexNodeSelect];
     const { hourDeparture } = nodeA.analysis;
 
+    // TODO: hacer esto con Promise.all()
     for (let i = 0; i < nodesBandsZero.length; i += 1) {
       const nodeB = nodes[nodesBandsZero[i]];
 

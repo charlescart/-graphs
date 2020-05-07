@@ -64,7 +64,6 @@ const brinksRepository = {
 
       /* tiempos de nodo root contra todos los nodos disponibles */
       const trafficTimes = await getTrafficTimes(nodeRoot, nodes, currentDate, currentTime);
-      // TODO: antes de hacer los gets filtrar y sacar los vencidos
       console.log(trafficTimes);
 
       for (let i = 0; i < nodes.length; i += 1) {
@@ -202,7 +201,7 @@ const brinksRepository = {
         console.log(`Node definitivo:`, nodes[indexNodeSelect]);
 
         /* seleccionando el nodo y ajustando variables */
-        // TODO: liberar nodos dependientes del nodo seleccionado
+        // TODO: liberar nodos dependientes(COTO) del nodo seleccionado
         currentTime = nodes[indexNodeSelect].analysis.hourDeparture.clone();
         const difinitiveNode = nodes.splice(indexNodeSelect, 1);
 
