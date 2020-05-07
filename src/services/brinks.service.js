@@ -61,7 +61,7 @@ const brinksService = {
   },
 
   /* description */
-  getDurationInTraffic: async (nodeA, nodeB, currentDate, currentTime, index) => {
+  getDurationInTraffic: async (nodeA, nodeB, currentDate, currentTime) => {
     const baseUrl = 'https://router.hereapi.com/v8/routes?';
     const apiKey = process.env.API_KEY_TRAFFIC;
 
@@ -74,7 +74,7 @@ const brinksService = {
       .then((res) => res.routes[0].sections[0].summary.duration);
 
     return {
-      index,
+      description: nodeB.description,
       time: moment.duration(timeInTraffic, 'seconds'),
     };
   },
@@ -86,7 +86,7 @@ const brinksService = {
     for (let i = 0; i < nodes.length; i += 1) {
       if (nodes[i].blocked) continue;
       // eslint-disable-next-line max-len
-      trafficTimes.push(brinksService.getDurationInTraffic(nodeRoot, nodes[i], currentDate, currentTime, i));
+      trafficTimes.push(brinksService.getDurationInTraffic(nodeRoot, nodes[i], currentDate, currentTime));
     }
 
     return Promise.all(trafficTimes);
@@ -149,7 +149,7 @@ const brinksService = {
         .getDurationInTraffic(nodeA, nodeB, currentDate, hourDeparture);
 
       const hourArrival = hourDeparture.clone();
-      hourArrival.add(timeInTraffic);
+      hourArrival.add(timeInTraffic.time);
 
       /* si la hora de arrival es mayor a la hora final de la franja, la franja ya ha vencido */
       const expiredTimeSlot = hourArrival > nodeB.analysis.firstStrip.end;

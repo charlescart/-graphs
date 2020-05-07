@@ -36,6 +36,32 @@ const brinksRepository = {
       let indexNodeSelect;
       /* nodes con franjas horarias en cero */
       let nodesBandsZero = [];
+      const nodesForDelete = [];
+
+      for (let i = 0; i < nodes.length; i += 1) {
+        if (nodes[i].blocked) continue;
+        let nodeIsInvalid = true;
+
+        for (let h = 0; h < nodes[i].attentionHour.length; h += 1) {
+          const hourEnd = moment.duration(nodes[i].attentionHour[h].end);
+          hourEnd.subtract(currentTime);
+
+          if (hourEnd.asSeconds() < 0) continue;
+          nodeIsInvalid = false;
+
+          // si tiene por lo menos una franja valida no verifico mas
+          break;
+        }
+
+        /* ya no se puede cumplir con este nodo */
+        if (nodeIsInvalid || nodes[i].unfulfilled) nodesForDelete.push(i);
+      }
+
+      for (let i = 0; i < nodesForDelete.length; i += 1) {
+        const nodePull = nodes.splice(nodesForDelete[i], 1);
+        unfulfilledNodes.push(nodePull[0]);
+      }
+
       /* tiempos de nodo root contra todos los nodos disponibles */
       const trafficTimes = await getTrafficTimes(nodeRoot, nodes, currentDate, currentTime);
       // TODO: antes de hacer los gets filtrar y sacar los vencidos
@@ -50,7 +76,7 @@ const brinksRepository = {
         let timeInTraffic;
         for (let j = 0; j < trafficTimes.length; j += 1) {
           // el tiempo de trafico entre nodo root y este nodo
-          if (i === trafficTimes[j].index) {
+          if (node.description === trafficTimes[j].description) {
             timeInTraffic = trafficTimes[j].time;
             break;
           }
@@ -75,8 +101,9 @@ const brinksRepository = {
 
         /* este nodo es un unfulfilled */
         if (firstStrip === undefined) {
-          const nodePull = nodes.splice(i, 1);
-          unfulfilledNodes.push(nodePull[0]);
+          // const nodePull = nodes.splice(i, 1);
+          // unfulfilledNodes.push(nodePull[0]);
+          node.unfulfilled = { currentTime, timeInTraffic, from: nodeRoot.description };
           continue;
         }
 
@@ -95,7 +122,6 @@ const brinksRepository = {
         if (node.serviceTimeWithin) timeBandWidth.subtract(moment.duration(node.serviceTime));
 
         /* verifica si pase la franja horaria en el tiempo de llegada con trafico */
-        // const expiredTimeSlot = await checkExpiredTimeSlot(currentTime, timeInTraffic, firstStrip);
 
         /* llega dentro de la franja horaria? */
         const arrival = await getArrival(node, currentTime, timeInTraffic, firstStrip);
@@ -178,7 +204,7 @@ const brinksRepository = {
         /* seleccionando el nodo y ajustando variables */
         // TODO: liberar nodos dependientes del nodo seleccionado
         currentTime = nodes[indexNodeSelect].analysis.hourDeparture.clone();
-        const difinitiveNode = nodes.splice(nodes[indexNodeSelect], 1);
+        const difinitiveNode = nodes.splice(indexNodeSelect, 1);
 
         // eslint-disable-next-line prefer-destructuring
         nodeRoot = difinitiveNode[0];
