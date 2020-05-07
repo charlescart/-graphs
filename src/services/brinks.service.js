@@ -22,7 +22,7 @@ const brinksService = {
   //   },
 
   /* description */
-  getFirstStrip: async (node, currentTime, timeInTraffic) => {
+  getFirstStrip: (node, currentTime, timeInTraffic) => {
     const hourArrival = currentTime.clone();
     hourArrival.add(timeInTraffic);
     let firstStrip;
@@ -80,13 +80,28 @@ const brinksService = {
   },
 
   /* description */
-  getTrafficTimes: async (nodeRoot, nodes, currentDate, currentTime) => {
+  getTrafficTimes: (nodeRoot, nodes, currentDate, currentTime) => {
+    const baseUrl = 'https://router.hereapi.com/v8/routes?';
+    const apiKey = process.env.API_KEY_TRAFFIC;
+
+    let hourDeparture = moment(currentDate);
+    hourDeparture.add(currentTime);
+    hourDeparture = hourDeparture.format('YYYY-MM-DDTHH:mm:ss');
+
     const trafficTimes = [];
 
     for (let i = 0; i < nodes.length; i += 1) {
       if (nodes[i].blocked) continue;
       // eslint-disable-next-line max-len
-      trafficTimes.push(brinksService.getDurationInTraffic(nodeRoot, nodes[i], currentDate, currentTime));
+      trafficTimes.push(
+        fetch(`${baseUrl}transportMode=car&origin=${nodeRoot.coordinates.lat},${nodeRoot.coordinates.lng}&destination=${nodes[i].coordinates.lat},${nodes[i].coordinates.lng}&return=summary&departureTime=${hourDeparture}&apiKey=${apiKey}`)
+          .then((res) => res.json())
+          .then((res) => {
+            const time = moment.duration(res.routes[0].sections[0].summary.duration, 'seconds');
+            return { description: nodes[i].description, time };
+            // eslint-disable-next-line comma-dangle
+          })
+      );
     }
 
     return Promise.all(trafficTimes);
@@ -94,7 +109,7 @@ const brinksService = {
 
 
   /* description */
-  getArrival: async (node, currentTime, durationInTraffic, firstStrip) => {
+  getArrival: (node, currentTime, durationInTraffic, firstStrip) => {
     const start = moment('00:00:00', 'HH:mm:ss');
     start.add(firstStrip.start);
 
@@ -191,6 +206,67 @@ const brinksService = {
     }
 
     return count;
+  },
+
+  /* Filtra los nodos casando los que tienen todas las franja horarias vencidas
+     y los que han sido marcados como "unfulfilled". */
+  getValidNodes: (nodes, currentTime, unfulfilledNodes, nodeRoot) => {
+
+    for (let i = 0; i < nodes.length; i += 1) {
+      if (nodes[i].blocked) continue; // nodo bloqueado
+      let nodeIsInvalid = true; // nodo invalido por default
+
+      /* se verifica que exista por lo menos una franja viva */
+      for (let h = 0; h < nodes[i].attentionHour.length; h += 1) {
+        const hourEnd = moment.duration(nodes[i].attentionHour[h].end);
+        hourEnd.subtract(currentTime);
+
+        /* si la franja esta vencida */
+        if (hourEnd.asSeconds() < 0) {
+          continue;
+        }
+
+        // hay por lo menos una franja viva
+        nodeIsInvalid = false;
+        break; // no necesito verificar mas por este nodo
+      }
+
+      if (nodeIsInvalid && !nodes[i].unfulfilled) {
+        nodes[i].unfulfilled = { currentTime, from: nodeRoot.description };
+      }
+
+      /* ya no se puede cumplir con este nodo */
+      if (nodeIsInvalid || nodes[i].unfulfilled) unfulfilledNodes.push(nodes[i]);
+    }
+
+    /* solo los nodos validos */
+    return nodes.filter((node) => !node.unfulfilled);
+  },
+  /* selecciona el tiempo de trafico entre el nodo root y el nodo x. */
+  selectTimeTrafficToNode: (node, trafficTimes) => {
+    let timeInTraffic;
+
+    // TODO: evaluar si es conveniente ir eliminando los traffic times seleccionados
+    for (let i = 0; i < trafficTimes.length; i += 1) {
+      if (node.description === trafficTimes[i].description) {
+        timeInTraffic = trafficTimes[i].time;
+        break;
+      }
+    }
+
+    return timeInTraffic;
+  },
+
+  /* desbloquea los nodos dependientes de un nodo root */
+  unlockDependentNodes: (nodeRoot, nodes) => {
+    for (let i = 0; i < nodes.length; i += 1) {
+      const node = nodes[i];
+      if (nodeRoot.destination === node.description) {
+        delete node.blocked;
+        // eslint-disable-next-line no-console
+        console.log(`${node.description} desbloqueado!`);
+      }
+    }
   },
 };
 

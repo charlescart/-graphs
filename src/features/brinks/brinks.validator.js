@@ -32,17 +32,18 @@ const brinksValidator = {
                 .label("attention hours"),
               serviceTime: Joi.string().trim().required().label("service time"),
               serviceTimeWithin: Joi.boolean()
-                .required()
+                .default(false)
                 .label("service time within"),
               priority: Joi.number().min(0).required(),
               destination: Joi.string().trim(),
               blocked: Joi.boolean().required().optional(),
-              finalDestination: Joi.boolean().label("final destination"),
+              nodeRoot: Joi.boolean().label("final destination"),
             })
             .required()
         )
         .unique("description"),
       hourDeparture: Joi.string().trim().required(),
+      timePerStop: Joi.string().trim().default('PT0H05M0S'),
     }),
   }),
 };
