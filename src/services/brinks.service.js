@@ -211,7 +211,6 @@ const brinksService = {
   /* Filtra los nodos casando los que tienen todas las franja horarias vencidas
      y los que han sido marcados como "unfulfilled". */
   getValidNodes: (nodes, currentTime, unfulfilledNodes, nodeRoot) => {
-
     for (let i = 0; i < nodes.length; i += 1) {
       if (nodes[i].blocked) continue; // nodo bloqueado
       let nodeIsInvalid = true; // nodo invalido por default
