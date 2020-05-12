@@ -42,8 +42,9 @@ const brinksValidator = {
             .required()
         )
         .unique("description"),
-      hourDeparture: Joi.string().trim().required(),
-      timePerStop: Joi.string().trim().default('PT0H05M0S'),
+      hourDeparture: Joi.string().trim().required().label('hour departure'),
+      timePerStop: Joi.string().trim().default('PT0H05M0S').label('time per stop'),
+      additionalRoutes: Joi.boolean().default(false).label('additional routes')
     }),
   }),
 };

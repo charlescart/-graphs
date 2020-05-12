@@ -15,26 +15,25 @@ const {
 } = require('../../services/brinks.service');
 
 const brinksRepository = {
-  algorithm: async (req) => {
+  algorithm: async ({ body }) => {
     /* nodos, hora de salida y tiempo por nodo */
-    const { hourDeparture } = req.body;
-    let { nodes, timePerStop } = req.body;
-    timePerStop = moment.duration(timePerStop);
-
+    const { hourDeparture } = body;
     /* fecha actual, para api traffic */
     const currentDate = moment('00:00:00', 'HH:mm:ss');
 
+    let { nodes, timePerStop, additionalRoutes } = body;
+    timePerStop = moment.duration(timePerStop);
     /* hora de partida */
     let currentTime = moment.duration(hourDeparture);
-
-    /* nodo de inicio */
-    let nodeRoot = nodes.shift();
-
     /* nodos no cumplidos */
     let unfulfilledNodes = [];
+    /* nodo de inicio */
+    let nodeRoot = nodes.shift();
+    let nodesForAdditionalRoutes = [];
 
     /* ruta optima */
     const route = [nodeRoot];
+    const routes = [];
 
     do {
       console.log('# # # # # # # # # # # #');
@@ -94,6 +93,7 @@ const brinksRepository = {
         /* si el tiempo de servicio va dentro de la franja horaria */
         if (node.serviceTimeWithin) timeBandWidth.subtract(moment.duration(node.serviceTime));
 
+        // TODO: mejorar tiempos de getArrival
         console.time('getArrival');
         /* llega dentro de la franja horaria? */
         const arrival = getArrival(node, currentTime, timeInTraffic, firstStrip);
@@ -106,6 +106,9 @@ const brinksRepository = {
         let hourBase = moment.duration(currentTime + timeInTraffic);
         /* hourBase si se llega antes de la franja horaria */
         if (!arrival) hourBase = firstStrip.start.clone();
+
+        /* */
+        if (additionalRoutes) nodesForAdditionalRoutes.push(node);
 
         node.analysis = {
           firstStrip,
@@ -151,6 +154,10 @@ const brinksRepository = {
           }
         }
         /* fin de identificacion del nodo mas urgente */
+
+        /* si indexNodeSelect !== i quiere decir que no lo seleccionó a pesar de ser una posible opcion
+        * podria pushearlo a la funcion
+        */
       }
 
       console.log('Node urgente:', nodes[indexNodeSelect]);
@@ -169,6 +176,18 @@ const brinksRepository = {
         /* fin de verificando que nodo urgente no hace incumplir nodo de cero franjas disponibles */
 
         console.log('Node definitivo:', nodes[indexNodeSelect]);
+
+        if (additionalRoutes && nodesForAdditionalRoutes.length > 0) {
+          for (let i = 0; i < nodes.length; i += 1) {
+            /* solos las opciones posibles menos el de la ruta seleccionada */
+            if (nodes[i].analysis === undefined || nodes[i].description === nodes[indexNodeSelect].description) {
+              continue;
+            }
+
+          }
+
+          additionalRoutes = false;
+        }
 
         /* seleccionando el nodo y ajustando variables */
         // TODO: liberar nodos dependientes(COTO) del nodo seleccionado
@@ -190,8 +209,8 @@ const brinksRepository = {
     unfulfilledNodes = unfulfilledNodes.concat(nodes);
     return { route, unfulfilledNodes };
   },
-  promiseAll: async (req) => {
-    const { nodes, hourDeparture } = req.body;
+  promiseAll: async ({ body }) => {
+    const { nodes, hourDeparture } = body;
     /* fecha actual, para api traffic */
     const currentDate = moment('00:00:00', 'HH:mm:ss');
     /* hora de partida */
