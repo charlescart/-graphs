@@ -268,33 +268,43 @@ const brinksRepository = {
 
     unfulfilledNodes = unfulfilledNodes.concat(nodes);
 
+    let totalDuration = moment.duration(0);
+    if (route[route.length - 1].analysis) {
+      totalDuration = moment.duration(route[route.length - 1].analysis.hourDeparture - hourDeparture);
+    }
+
     if (nodesForAdditionalRoutes.length > 0) {
       return Promise.all(routes).then((res) => {
         console.log('AJAJAAAAAA', res);
+        const suggestedRoutes = [];
 
         for (let i = 0; i < res.length; i += 1) {
-          res[i].route.unshift(route[0]);
-          res[i].hourDeparture = hourDeparture;
+          res[i].bestRoute.route.unshift(route[0]);
+          res[i].bestRoute.hourDeparture = hourDeparture;
+          suggestedRoutes.push(res[i].bestRoute);
         }
 
         return {
           bestRoute: {
             hourDeparture,
-            totalDuration: moment.duration(route[route.length - 1].analysis.hourDeparture - hourDeparture),
+            totalDuration,
             route,
             unfulfilledNodes,
           },
-          suggestedRoutes: res,
+          suggestedRoutes,
         };
       });
     }
 
     /* suggested routes */
     return {
-      hourDeparture,
-      totalDuration: moment.duration(route[route.length - 1].analysis.hourDeparture - hourDeparture),
-      route,
-      unfulfilledNodes,
+      bestRoute: {
+        hourDeparture,
+        totalDuration,
+        route,
+        unfulfilledNodes,
+      },
+      suggestedRoutes: [],
     };
   },
   promiseAll: async ({ body }) => {
