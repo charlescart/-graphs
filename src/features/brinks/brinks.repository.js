@@ -16,12 +16,19 @@ const {
 
 const brinksRepository = {
   algorithm: async ({ body }) => {
+    const clon = JSON.stringify(body);
+    body = JSON.parse(clon);
+
     /* nodos, hora de salida y tiempo por nodo */
-    const { hourDeparture } = body;
+    // const { hourDeparture } = body;
     /* fecha actual, para api traffic */
     const currentDate = moment('00:00:00', 'HH:mm:ss');
 
-    let { nodes, timePerStop, additionalRoutes } = body;
+    let {
+      nodes, timePerStop, additionalRoutes, hourDeparture,
+    } = body;
+
+    hourDeparture = moment.duration(hourDeparture);
     timePerStop = moment.duration(timePerStop);
     /* hora de partida */
     let currentTime = moment.duration(hourDeparture);
@@ -29,8 +36,8 @@ const brinksRepository = {
     let unfulfilledNodes = [];
     /* nodo de inicio */
     let nodeRoot = nodes.shift();
-    let nodesForAdditionalRoutes = [];
 
+    const nodesForAdditionalRoutes = [];
     /* ruta optima */
     const route = [nodeRoot];
     const routes = [];
@@ -42,30 +49,36 @@ const brinksRepository = {
       /* nodes con franjas horarias en cero */
       let nodesBandsZero = [];
 
-      console.time('getValidNodes');
+      // console.time('getValidNodes');
       nodes = getValidNodes(nodes, currentTime, unfulfilledNodes, nodeRoot);
-      console.timeEnd('getValidNodes');
+      // console.timeEnd('getValidNodes');
+      console.log(`${nodeRoot.description}`, nodes);
 
-      console.time('getTrafficTimes');
+      if (nodes.length <= 0) {
+        console.log('CEROOOOOOOOOOOOO#');
+        break;
+      }
+
+      // console.time('getTrafficTimes');
       /* tiempos desde nodo root contra todos los nodos disponibles */
       const trafficTimes = await getTrafficTimes(nodeRoot, nodes, currentDate, currentTime);
-      console.timeEnd('getTrafficTimes');
+      // console.timeEnd('getTrafficTimes');
 
-      console.log(trafficTimes);
+      // console.log(trafficTimes);
 
       for (let i = 0; i < nodes.length; i += 1) {
         /* si el nodo está bloqueado no lo analizo */
         if (nodes[i].blocked) continue;
         const node = nodes[i];
 
-        console.time('selectTimeTrafficToNode');
+        // console.time('selectTimeTrafficToNode');
         const timeInTraffic = selectTimeTrafficToNode(node, trafficTimes);
-        console.timeEnd('selectTimeTrafficToNode');
+        // console.timeEnd('selectTimeTrafficToNode');
 
-        console.time('getFirstStrip');
+        // console.time('getFirstStrip');
         /* la franja horaria mas cercana con respecto a la hora de salida */
         const { firstStrip, numberBands } = getFirstStrip(node, currentTime, timeInTraffic);
-        console.timeEnd('getFirstStrip');
+        // console.timeEnd('getFirstStrip');
 
         /* este nodo es un unfulfilled */
         if (firstStrip === undefined) {
@@ -94,10 +107,10 @@ const brinksRepository = {
         if (node.serviceTimeWithin) timeBandWidth.subtract(moment.duration(node.serviceTime));
 
         // TODO: mejorar tiempos de getArrival
-        console.time('getArrival');
+        // console.time('getArrival');
         /* llega dentro de la franja horaria? */
         const arrival = getArrival(node, currentTime, timeInTraffic, firstStrip);
-        console.timeEnd('getArrival');
+        // console.timeEnd('getArrival');
 
         /* tiempo de serivico en el nodo */
         const serviceTime = moment.duration(node.serviceTime);
@@ -107,8 +120,22 @@ const brinksRepository = {
         /* hourBase si se llega antes de la franja horaria */
         if (!arrival) hourBase = firstStrip.start.clone();
 
+
         /* */
-        if (additionalRoutes) nodesForAdditionalRoutes.push(node);
+        // if (additionalRoutes) {
+        //   const aux = nodes.filter((item, index) => index !== i);
+        //   aux.unshift(node);
+        //   const aux2 = {
+        //     body: {
+        //       timePerStop,
+        //       nodes: aux,
+        //       hourDeparture: moment.duration(hourBase + timePerStop + serviceTime),
+        //       additionalRoutes: false,
+        //     },
+        //   };
+
+        //   routes.push(await brinksRepository.algorithm(aux2));
+        // }
 
         node.analysis = {
           firstStrip,
@@ -121,7 +148,9 @@ const brinksRepository = {
           hourDeparture: moment.duration(hourBase + timePerStop + serviceTime),
         };
 
-        console.log(`${node.description}: departure: ${currentTime} durationInTraffic: ${timeInTraffic.asSeconds()}
+        if (additionalRoutes) nodesForAdditionalRoutes.push(node);
+
+        console.log(`${node.description}: departure: ${currentTime} durationInTraffic: ${timeInTraffic}
           timeArrival: ${moment.duration(currentTime + timeInTraffic)}, Arrival?: ${arrival}, Cercania: ${timeProximity.asSeconds()},
           anchodefranja: ${timeBandWidth.asSeconds()}, ${firstStrip.start} - ${firstStrip.end}, numberBands: ${numberBands}`);
 
@@ -162,6 +191,8 @@ const brinksRepository = {
 
       console.log('Node urgente:', nodes[indexNodeSelect]);
 
+      // additionalRoutes = false;
+
       // TODO: quitar if al volver el proceso a function
       if (indexNodeSelect !== undefined) {
         /* verificando que nodo urgente no hace incumplir con nodos de cero franjas disponibles */
@@ -176,6 +207,20 @@ const brinksRepository = {
         /* fin de verificando que nodo urgente no hace incumplir nodo de cero franjas disponibles */
 
         console.log('Node definitivo:', nodes[indexNodeSelect]);
+        // if (additionalRoutes) {
+        //   const aux = nodes.filter((item, index) => index !== i);
+        //   aux.unshift(node);
+        //   const aux2 = {
+        //     body: {
+        //       timePerStop,
+        //       nodes: aux,
+        //       hourDeparture: moment.duration(hourBase + timePerStop + serviceTime),
+        //       additionalRoutes: false,
+        //     },
+        //   };
+
+        //   routes.push(await brinksRepository.algorithm(aux2));
+        // }
 
         if (additionalRoutes && nodesForAdditionalRoutes.length > 0) {
           for (let i = 0; i < nodes.length; i += 1) {
@@ -184,6 +229,21 @@ const brinksRepository = {
               continue;
             }
 
+            let nodesForAdditionalRoute = nodes.filter((item, index) => index !== i);
+            nodesForAdditionalRoute = JSON.stringify(nodesForAdditionalRoute);
+            nodesForAdditionalRoute = JSON.parse(nodesForAdditionalRoute);
+            unlockDependentNodes(nodes[i], nodesForAdditionalRoute);
+            nodesForAdditionalRoute.unshift(nodes[i]);
+            const routeAdditionalObject = {
+              body: {
+                timePerStop,
+                nodes: nodesForAdditionalRoute,
+                hourDeparture: nodes[i].analysis.hourDeparture,
+                additionalRoutes: false,
+              },
+            };
+
+            routes.push(await brinksRepository.algorithm(routeAdditionalObject));
           }
 
           additionalRoutes = false;
@@ -207,7 +267,35 @@ const brinksRepository = {
     console.log('Route:', route);
 
     unfulfilledNodes = unfulfilledNodes.concat(nodes);
-    return { route, unfulfilledNodes };
+
+    if (nodesForAdditionalRoutes.length > 0) {
+      return Promise.all(routes).then((res) => {
+        console.log('AJAJAAAAAA', res);
+
+        for (let i = 0; i < res.length; i += 1) {
+          res[i].route.unshift(route[0]);
+          res[i].hourDeparture = hourDeparture;
+        }
+
+        return {
+          bestRoute: {
+            hourDeparture,
+            totalDuration: moment.duration(route[route.length - 1].analysis.hourDeparture - hourDeparture),
+            route,
+            unfulfilledNodes,
+          },
+          suggestedRoutes: res,
+        };
+      });
+    }
+
+    /* suggested routes */
+    return {
+      hourDeparture,
+      totalDuration: moment.duration(route[route.length - 1].analysis.hourDeparture - hourDeparture),
+      route,
+      unfulfilledNodes,
+    };
   },
   promiseAll: async ({ body }) => {
     const { nodes, hourDeparture } = body;
