@@ -2,6 +2,7 @@
 /* eslint-disable no-console */
 /* eslint-disable no-await-in-loop */
 const moment = require('moment');
+const _ = require('lodash');
 const {
   getFirstStrip,
   getDurationInTraffic,
@@ -225,7 +226,7 @@ const brinksRepository = {
         if (additionalRoutes && nodesForAdditionalRoutes.length > 0) {
           for (let i = 0; i < nodes.length; i += 1) {
             /* solos las opciones posibles menos el de la ruta seleccionada */
-            if (nodes[i].analysis === undefined || nodes[i].description === nodes[indexNodeSelect].description) {
+            if (nodes[i].analysis === undefined) {
               continue;
             }
 
@@ -284,14 +285,33 @@ const brinksRepository = {
           suggestedRoutes.push(res[i].bestRoute);
         }
 
+        let bestRoute = _.orderBy(suggestedRoutes, [
+          (item) => item.route.length,
+          (item) => item.totalDuration.asSeconds()
+        ], ['desc', 'asc']);
+
+        // let maxNodesforRoute;
+        // for (let i = 0; i < suggestedRoutes.length; i += 1) {
+        //   if (maxNodesforRoute === undefined) {
+        //     maxNodesforRoute = suggestedRoutes[i].route.length;
+        //     continue;
+        //   }
+
+        //   if (maxNodesforRoute < suggestedRoutes[i].route.length) {
+        //     maxNodesforRoute = suggestedRoutes[i].route.length;
+        //   }
+        // }
+
+        // let bestRoutes = suggestedRoutes.filter((item) => item.route.length >= maxNodesforRoute);
+
         return {
-          bestRoute: {
-            hourDeparture,
-            totalDuration,
-            route,
-            unfulfilledNodes,
-          },
-          suggestedRoutes,
+          // bestRoute: {
+          //   hourDeparture,
+          //   totalDuration,
+          //   route,
+          //   unfulfilledNodes,
+          // },
+          suggestedRoutes: bestRoute,
         };
       });
     }
