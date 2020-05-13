@@ -29,7 +29,7 @@ app.get('/', (req, res) => {
 /* features */
 require('./features/brinks/brinks.router')(app);
 
-app.use((err, req, res) => {
+app.use((err, req, res, next) => {
   handleError(err, res, req);
 });
 
