@@ -4,7 +4,7 @@ const brinksRepository = require('./brinks.repository');
 const brinksController = {
   // eslint-disable-next-line arrow-body-style
   algorithm: async (req) => {
-    return brinksRepository.algorithm(req);
+    return brinksRepository.algorithm(req.body);
   },
   promiseAll: async (req) => {
     console.time('total');

@@ -1,26 +1,10 @@
+/* eslint-disable no-param-reassign */
+/* eslint-disable no-console */
 /* eslint-disable no-continue */
 const moment = require('moment');
 const fetch = require('node-fetch');
 
 const brinksService = {
-  /* Funcion que obtiene la hora mas al final del dia de todas las franjas horarias de un nodo */
-  //   getTimeFinal: async (node) => {
-  //     let finalTime = node.attentionHour.reduce((a, b) => {
-  //       /* ubico la hora mas al final del dia, esa es la hora limite del nodo */
-  //       return moment.duration(a.end) > moment.duration(b.end) ? a : b;
-  //     });
-
-  //     finalTime = moment.duration(finalTime.end);
-
-  //     // si el tiempo de serivicio va dentro de la franja horaria
-  //     if (node.serviceTimeWithin) {
-  //       const serviceTime = moment.duration(node.serviceTime);
-  //       finalTime.subtract(serviceTime);
-  //     }
-
-  //     return finalTime;
-  //   },
-
   /* description */
   getFirstStrip: (node, currentTime, timeInTraffic) => {
     const hourArrival = currentTime.clone();
@@ -80,19 +64,27 @@ const brinksService = {
   },
 
   /* description */
-  getTrafficTimes: (nodeRoot, nodes, currentDate, currentTime) => {
+  getTrafficTimes: ({
+    nodeRoot, nodes, currentDate, currentTime, unfulfilledNodes,
+  }) => {
     const baseUrl = 'https://router.hereapi.com/v8/routes?';
     const apiKey = process.env.API_KEY_TRAFFIC;
 
-    let hourDeparture = moment(currentDate);
-    hourDeparture.add(currentTime);
-    hourDeparture = hourDeparture.format('YYYY-MM-DDTHH:mm:ss');
+    // TODO: esto puede ser un currentDate.clone();
+    const hourDeparture = currentDate
+      .clone()
+      .add(currentTime)
+      .format('YYYY-MM-DDTHH:mm:ss');
 
     const trafficTimes = [];
 
     for (let i = 0; i < nodes.length; i += 1) {
-      if (nodes[i].blocked) continue;
-      // eslint-disable-next-line max-len
+      if (nodes[i].blocked || nodes[i].unfulfilled) continue;
+
+      const nodeIsInvalid = brinksService.getValidNodes(nodeRoot, nodes[i], unfulfilledNodes, currentTime);
+      /* si el nodo es invalido lo excluyo de los query de traffic */
+      if (nodeIsInvalid) continue;
+
       trafficTimes.push(
         fetch(`${baseUrl}transportMode=car&origin=${nodeRoot.coordinates.lat},${nodeRoot.coordinates.lng}&destination=${nodes[i].coordinates.lat},${nodes[i].coordinates.lng}&return=summary&departureTime=${hourDeparture}&apiKey=${apiKey}`)
           .then((res) => res.json())
@@ -124,34 +116,7 @@ const brinksService = {
   },
 
   /* description */
-  // TODO: la no la uso
-  getNumberTimeBandsAvailabilitys: async (node, currentTime) => {
-    let numberBands = 0;
-
-    for (let i = 0; i < node.attentionHour.length; i += 1) {
-      const timeBand = moment.duration(node.attentionHour[i].end);
-      if (currentTime < timeBand) numberBands += 1;
-    }
-
-    /* le resto 1 para identificar cuantas restan, no tomar encuenta en la franja en curso */
-    numberBands -= 1;
-
-    return numberBands;
-  },
-
-  /* description */
-  // TODO: la no la uso
-  checkExpiredTimeSlot: async (currentTime, durationInTraffic, firstStrip) => {
-    const hourArrival = currentTime.clone();
-    hourArrival.add(durationInTraffic);
-
-    /* si la hora en la que llega es mayor a la hora final de la franja, la franja ya ha vencido */
-    return hourArrival > firstStrip.end;
-  },
-
-  /* description */
   complianceWithZeroBandNodes: async (nodes, indexNodeSelect, nodesBandsZero, currentDate) => {
-    let indexNodeZero;
     const unfulfilledNodes = [];
     const nodeA = nodes[indexNodeSelect];
     const { hourDeparture } = nodeA.analysis;
@@ -172,6 +137,7 @@ const brinksService = {
       if (expiredTimeSlot) unfulfilledNodes.push({ expiredTimeSlot, index: nodesBandsZero[i] });
     }
 
+    let indexNodeZero;
     /* eleccion con de nodo con mas prioridad */
     for (let i = 0; i < unfulfilledNodes.length; i += 1) {
       if (indexNodeZero === undefined) {
@@ -185,8 +151,8 @@ const brinksService = {
       if (nodeZeroA.priority > nodeZeroB.priority) {
         indexNodeZero = unfulfilledNodes[i].index; // nodo mas prioritario
       } else if (nodeZeroA.priority === nodeZeroB.priority) { // en caso de empate de prioridad
+        // se toma el de ancho de banda mas pequeña
         if (nodeZeroA.analysis.timeBandWidth >= nodeZeroB.analysis.timeBandWidth) {
-          // se toma el de ancho de banda mas pequeña
           indexNodeZero = unfulfilledNodes[i].index;
         }
       }
@@ -200,7 +166,7 @@ const brinksService = {
   getNodesAvailabilitys: async (nodes) => {
     let count = false;
     for (let i = 0; i < nodes.length; i += 1) {
-      if (nodes[i].blocked) continue;
+      if (nodes[i].blocked || nodes[i].unfulfilled) continue;
       count = true;
       i = nodes.length;
     }
@@ -208,38 +174,40 @@ const brinksService = {
     return count;
   },
 
-  /* Filtra los nodos casando los que tienen todas las franja horarias vencidas
+  /* Filtra los nodos sacando los que tienen todas las franja horarias vencidas
      y los que han sido marcados como "unfulfilled". */
-  getValidNodes: (nodes, currentTime, unfulfilledNodes, nodeRoot) => {
-    for (let i = 0; i < nodes.length; i += 1) {
-      if (nodes[i].blocked) continue; // nodo bloqueado
-      let nodeIsInvalid = true; // nodo invalido por default
+  getValidNodes: (nodeRoot, node, unfulfilledNodes, currentTime) => {
+    let nodeIsInvalid = true; // nodo invalido por default
 
-      /* se verifica que exista por lo menos una franja viva */
-      for (let h = 0; h < nodes[i].attentionHour.length; h += 1) {
-        const hourEnd = moment.duration(nodes[i].attentionHour[h].end);
-        hourEnd.subtract(currentTime);
+    /* se verifica que exista por lo menos una franja viva */
+    for (let i = 0; i < node.attentionHour.length; i += 1) {
+      /* rango inferior de la franja horaria */
+      const hourEnd = moment.duration(node.attentionHour[i].end);
+      hourEnd.subtract(currentTime); // restandole la hora actual
 
-        /* si la franja esta vencida */
-        if (hourEnd.asSeconds() < 0) {
-          continue;
-        }
+      /* si la franja esta vencida "nodeIsInvalid" sigue en true */
+      if (hourEnd.asSeconds() < 0) continue;
 
-        // hay por lo menos una franja viva
-        nodeIsInvalid = false;
-        break; // no necesito verificar mas por este nodo
-      }
-
-      if (nodeIsInvalid && !nodes[i].unfulfilled) {
-        nodes[i].unfulfilled = { currentTime, from: nodeRoot.description };
-      }
-
-      /* ya no se puede cumplir con este nodo */
-      if (nodeIsInvalid || nodes[i].unfulfilled) unfulfilledNodes.push(nodes[i]);
+      /* si "nodeIsInvalid" es false, hay por lo menos una franja viva */
+      nodeIsInvalid = false;
+      break; /* no necesito verificar mas si ya tengo la 1ra franja viva */
     }
 
-    /* solo los nodos validos */
-    return nodes.filter((node) => !node.unfulfilled);
+    /*
+    * si el nodo se le han vencido todas la franjas y no ha sido declarado
+    * anteriormente unfulfilled.
+    */
+    if (nodeIsInvalid && !node.unfulfilled) {
+      node.unfulfilled = { currentTime, from: nodeRoot.description };
+      unfulfilledNodes.push(node);
+    }
+
+    // TODO: quiero eliminar este if
+    /* ya no se puede cumplir con este nodo */
+    // if (nodeIsInvalid || node.unfulfilled) unfulfilledNodes.push(node);
+
+    /* respuesta indicando si el nodo es invalido o no */
+    return nodeIsInvalid;
   },
   /* selecciona el tiempo de trafico entre el nodo root y el nodo x. */
   selectTimeTrafficToNode: (node, trafficTimes) => {
@@ -266,6 +234,213 @@ const brinksService = {
         console.log(`${node.description} desbloqueado!`);
       }
     }
+  },
+
+  /* enviar a unfulfilled */
+  goUnfulfilled: (node, nodeRoot, currentTime, timeInTraffic) => {
+    console.log(`${node.description}: sin franja horaria disp!`);
+    node.unfulfilled = {
+      currentTime,
+      timeInTraffic,
+      from: nodeRoot.description,
+      hourArrival: moment.duration(currentTime + timeInTraffic),
+    };
+  },
+
+  /* description */
+  analyticsTheNode: (nodeRoot, node, trafficTimes, currentTime, timePerStop) => {
+    // console.time('selectTimeTrafficToNode');
+    const timeInTraffic = brinksService.selectTimeTrafficToNode(node, trafficTimes);
+    // console.timeEnd('selectTimeTrafficToNode');
+
+    // console.time('getFirstStrip');
+    /* la franja horaria mas cercana con respecto a la hora de salida */
+    const { firstStrip, numberBands } = brinksService.getFirstStrip(node, currentTime, timeInTraffic);
+    // console.timeEnd('getFirstStrip');
+
+    /* este nodo es un unfulfilled */
+    if (firstStrip === undefined) {
+      /* lo categoriaza con unfullfilled */
+      brinksService.goUnfulfilled(node, nodeRoot, currentTime, timeInTraffic);
+    } else {
+      /* Cercania */
+      const timeProximity = firstStrip.start.clone();
+      timeProximity.subtract(currentTime);
+
+      /* Ancho de franja horaria de atencion */
+      const timeBandWidth = firstStrip.end.clone();
+      timeBandWidth.subtract(firstStrip.start);
+
+      /* si el tiempo de servicio va dentro de la franja horaria */
+      if (node.serviceTimeWithin) timeBandWidth.subtract(moment.duration(node.serviceTime));
+
+      // TODO: mejorar tiempos de getArrival
+      // console.time('getArrival');
+      /* llega dentro de la franja horaria? */
+      const arrival = brinksService.getArrival(node, currentTime, timeInTraffic, firstStrip);
+      // console.timeEnd('getArrival');
+
+      /* tiempo de serivicio en el nodo */
+      const serviceTime = moment.duration(node.serviceTime);
+
+      /* hourBase si se llega al nodo dentro de la franja */
+      let hourBase = moment.duration(currentTime + timeInTraffic);
+
+      /* si se llega antes de la franja horaria */
+      if (!arrival) hourBase = firstStrip.start.clone();
+
+      const hourDeparture = moment.duration(hourBase + timePerStop + serviceTime);
+      const hourArrival = moment.duration(currentTime + timeInTraffic);
+
+      node.analysis = {
+        firstStrip,
+        timeProximity,
+        timeBandWidth,
+        timeInTraffic,
+        arrival,
+        numberBands,
+        hourArrival,
+        hourDeparture,
+      };
+    }
+  },
+
+  /* nameless */
+  nameless: async ({
+    nodeRoot, route: nodes, hourDeparture, timePerStop, timeDeparture,
+  }) => {
+    nodes = JSON.stringify(nodes);
+    nodes = JSON.parse(nodes);
+    /* tiempo actual del recorrido */
+    let currentTime = hourDeparture.clone();
+    /* nodos no cumplidos */
+    let unfulfilledNodes = [];
+
+    /* nodo de inicio */
+    let nodeInit = nodes.shift();
+
+    /* ruta diseñada */
+    const route = [nodeRoot];
+    route.push(nodeInit);
+
+    /* liberando los nodos del nodo seleccionado */
+    brinksService.unlockDependentNodes(nodeInit, nodes);
+
+    /* fecha actual, para api traffic */
+    const currentDate = moment('00:00:00', 'HH:mm:ss');
+
+    do {
+      /* separando los nodos validos de los unfulfilleds */
+      // nodes = brinksService.getValidNodes(nodeInit, nodes, unfulfilledNodes, currentTime);
+
+      if (nodes.length <= 0) {
+        console.log('CERO');
+        break;
+      }
+
+      const paramsGetTraffic = {
+        nodeRoot: nodeInit, nodes, currentDate, currentTime, unfulfilledNodes,
+      };
+      /* tiempos desde nodo root contra todos los nodos disponibles */
+      const trafficTimes = await brinksService.getTrafficTimes(paramsGetTraffic);
+      console.log(trafficTimes);
+      console.log(`${nodeInit.description}`, nodes);
+
+      /* Proximo nodo seleccionado */
+      let indexNodeSelect;
+
+      /* nodes con franjas horarias en cero */
+      let nodesBandsZero = [];
+
+      for (let i = 0; i < nodes.length; i += 1) {
+        /* si el nodo está bloqueado no lo analizo */
+        if (nodes[i].blocked || nodes[i].unfulfilled) continue;
+
+        /* current node */
+        const node = nodes[i];
+
+        /* analytics del node */
+        brinksService.analyticsTheNode(nodeRoot, node, trafficTimes, currentTime, timePerStop);
+        /* no tiene banda horaria disp. */
+        if (node.unfulfilled) continue;
+
+        /* identificando nodos de cero bandas disp */
+        if (node.analysis.numberBands <= 0) nodesBandsZero.push(i);
+
+        /* identificando el nodo mas urgente */
+        if (indexNodeSelect === undefined) {
+          indexNodeSelect = i;
+          continue; // porque apenas se inicializa
+        }
+
+        const nodeA = moment.duration(nodes[indexNodeSelect].analysis.timeProximity);
+        const nodeB = moment.duration(nodes[i].analysis.timeProximity);
+
+        /* si el nodo A está mas lejano de la franja horaria que el B, me quedo con el B */
+        if (nodeA.asSeconds() > nodeB.asSeconds()) {
+          indexNodeSelect = i; // el nodo mas cercano a la hora de partida
+        } else if (nodeA.asSeconds() === nodeB.asSeconds()) {
+          /* decidir empate de cercania por propiedad numberBands */
+
+          /* si la cercania es igual decide el nro de franjas horarias disponibles */
+          const numberBandsA = nodes[indexNodeSelect].analysis.numberBands;
+          const numberBandsB = nodes[i].analysis.numberBands;
+
+          if (numberBandsA > numberBandsB) {
+            indexNodeSelect = i; // el nodo con menos franjas horarias disponibles
+          } else if (numberBandsA === numberBandsB) { // decidir empate de numberBands por prioridad
+            const proirityA = nodes[indexNodeSelect].priority;
+            const priorityB = nodes[i].priority;
+
+            if (proirityA >= priorityB) indexNodeSelect = i; // el de prioridad max urgente
+          }
+        }
+        /* fin de identificacion del nodo mas urgente */
+      }
+
+      console.log('Node urgente:', nodes[indexNodeSelect]);
+
+      // TODO: quitar if al volver el proceso a function
+      if (indexNodeSelect !== undefined) {
+        /* verificando que nodo urgente no hace incumplir con nodos de cero franjas disponibles */
+        const { numberBands } = nodes[indexNodeSelect].analysis;
+        // TODO: indexNodeSelect !== undefined, es innecesaria por lo visto.
+        if (indexNodeSelect !== undefined && numberBands >= 1 && nodesBandsZero.length > 0) {
+          nodesBandsZero = await brinksService.complianceWithZeroBandNodes(nodes, indexNodeSelect, nodesBandsZero, currentDate);
+
+          /* seleccionando el importante, soltando al urgente */
+          if (nodesBandsZero !== undefined) indexNodeSelect = nodesBandsZero;
+        }
+        /* fin de verificando que nodo urgente no hace incumplir nodo de cero franjas disponibles */
+
+        console.log('Node definitivo:', nodes[indexNodeSelect]);
+
+        /* seleccionando el nodo y ajustando variables */
+        currentTime = nodes[indexNodeSelect].analysis.hourDeparture.clone();
+        const difinitiveNode = nodes.splice(indexNodeSelect, 1);
+
+        nodeInit = difinitiveNode[0];
+        route.push(difinitiveNode[0]);
+
+        /* fin de selección del nodo y ajustando variables */
+        if (nodeInit.destination) brinksService.unlockDependentNodes(nodeInit, nodes);
+      }
+      // TODO: este await en el condicional no me gusta
+    } while (await brinksService.getNodesAvailabilitys(nodes));
+
+    unfulfilledNodes = unfulfilledNodes.concat(nodes);
+
+    let totalDuration = moment.duration(0);
+    if (route[route.length - 1].analysis) {
+      totalDuration = moment.duration(route[route.length - 1].analysis.hourDeparture - timeDeparture);
+    }
+
+    return {
+      hourDeparture: timeDeparture,
+      totalDuration,
+      route,
+      unfulfilledNodes,
+    };
   },
 };
 
