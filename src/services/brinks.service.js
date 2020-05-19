@@ -361,32 +361,8 @@ const brinksService = {
           continue; // porque apenas se inicializa
         }
 
-        const nodeA = moment.duration(nodes[indexNodeSelect].analysis.timeProximity);
-        const nodeB = moment.duration(nodes[i].analysis.timeProximity);
-
-        /* si el nodo A está mas lejano de la franja horaria que el B, me quedo con el B */
-        if (nodeA.asSeconds() > nodeB.asSeconds()) {
-          indexNodeSelect = i; // el nodo mas cercano a la hora de partida
-        } else if (nodeA.asSeconds() === nodeB.asSeconds()) {
-          /* decidir empate de cercania por propiedad numberBands */
-
-          /* si la cercania es igual decide el nro de franjas horarias disponibles */
-          const numberBandsA = nodes[indexNodeSelect].analysis.numberBands;
-          const numberBandsB = nodes[i].analysis.numberBands;
-
-          if (numberBandsA > numberBandsB) {
-            indexNodeSelect = i; // el nodo con menos franjas horarias disponibles
-          } else if (numberBandsA === numberBandsB) { // decidir empate de numberBands por prioridad
-            const proirityA = nodes[indexNodeSelect].priority;
-            const priorityB = nodes[i].priority;
-
-            if (proirityA >= priorityB) indexNodeSelect = i; // el de prioridad max urgente
-          }
-        }
-        /* fin de identificacion del nodo mas urgente */
+        indexNodeSelect = brinksService.selectingNodeMoreUrgent(nodes[indexNodeSelect], nodes[i], i, indexNodeSelect);
       }
-
-      // console.log('Node urgente:', nodes[indexNodeSelect]);
 
       // TODO: quitar if al volver el proceso a function
       if (indexNodeSelect !== undefined) {
@@ -399,24 +375,18 @@ const brinksService = {
           /* seleccionando el importante, soltando al urgente */
           if (nodesBandsZero !== undefined) indexNodeSelect = nodesBandsZero;
         }
-        /* fin de verificando que nodo urgente no hace incumplir nodo de cero franjas disponibles */
-
-        // console.log('Node definitivo:', nodes[indexNodeSelect]);
 
         /* seleccionando el nodo y ajustando variables */
         currentTime = nodes[indexNodeSelect].analysis.hourDeparture.clone();
         const difinitiveNode = nodes.splice(indexNodeSelect, 1);
 
-        nodeInit = difinitiveNode[0];
+        [nodeInit] = difinitiveNode;
         route.push(difinitiveNode[0]);
 
         /* fin de selección del nodo y ajustando variables */
         if (nodeInit.destination) brinksService.unlockDependentNodes(nodeInit, nodes);
       }
-      /* TODO: este await en el condicional no me gusta.
-      * puedo invocarla dentro const continueDo = getNodesAvailabilitys(nodes);
-      * y poner la variable
-      */
+
       nextDo = brinksService.getNodesAvailabilitys(nodes);
     } while (nextDo);
 
@@ -433,6 +403,28 @@ const brinksService = {
       route,
       unfulfilledNodes,
     };
+  },
+
+  selectingNodeMoreUrgent: (nodeA, nodeB, i, indexNodeSelect) => {
+    const { timeProximity: timeProximityA, numberBands: numberBandsA } = nodeA.analysis;
+    const { timeProximity: timeProximityB, numberBands: numberBandsB } = nodeB.analysis;
+    let IndexNodeUrgent = indexNodeSelect;
+
+    /* si el nodo A está mas lejano de la franja horaria que el B, me quedo con el B */
+    if (timeProximityA.asSeconds() > timeProximityB.asSeconds()) {
+      IndexNodeUrgent = i; // el nodo mas cercano a la hora de partida
+    }
+
+    /* si la cercania es igual decide el nro de franjas horarias disponibles */
+    if (timeProximityA.asSeconds() === timeProximityB.asSeconds()) {
+      if (numberBandsA > numberBandsB) IndexNodeUrgent = i; // el nodo de menos franjas
+
+      if (numberBandsA === numberBandsB) {
+        if (nodeA.priority >= nodeB.priority) IndexNodeUrgent = i; // el de prioridad max urgente
+      }
+    }
+
+    return IndexNodeUrgent;
   },
 };
 

@@ -1,6 +1,5 @@
 /* eslint-disable no-param-reassign */
 /* eslint-disable no-continue */
-/* eslint-disable no-console */
 /* eslint-disable no-await-in-loop */
 const moment = require('moment');
 const _ = require('lodash');
@@ -13,9 +12,7 @@ const {
 } = require('../../services/brinks.service');
 
 const brinksRepository = {
-  algorithm: async ({
-    nodes, timeDeparture, timePerStop,
-  }) => {
+  algorithm: async ({ nodes, timeDeparture, timePerStop }) => {
     /* hora de salida */
     timeDeparture = moment.duration(timeDeparture);
     /* tiempo por parada */
@@ -24,11 +21,10 @@ const brinksRepository = {
     const currentTime = timeDeparture.clone();
     /* nodos no cumplidos */
     const unfulfilledNodes = [];
-    /* nodo de inicio */
-    const nodeRoot = nodes.shift();
-    /* rutas */
+    /* las diferentes rutas */
     const routes = [];
-
+    /* nodo anterior */
+    const nodeRoot = nodes.shift();
     nodes = getValidNodes(nodeRoot, nodes, unfulfilledNodes, currentTime);
 
     /* fecha actual, para api traffic */
@@ -49,7 +45,9 @@ const brinksRepository = {
       /* no tiene banda horaria disp */
       if (node.unfulfilled) continue;
 
+      /* todos los nodos menos en actual */
       const route = nodes.filter((item) => item !== node);
+      /* colocando el nodo como nodo raiz */
       route.unshift(node);
 
       const { hourDeparture } = node.analysis;
@@ -63,6 +61,10 @@ const brinksRepository = {
         node.unfulfilledNodes = unfulfilledNodes.concat(node.unfulfilledNodes);
       });
 
+      /* TODO: se debe calcular el tiempo que debo esperar en cada nodo antes de llegar a mi franja
+      * y ranquear tambien por sumatoria de tiempo de espera, seria: la ruta con mas nodos, menos
+      * tiempo total y menor duracion de tiempo de espera.
+      */
       suggestedRoutes = _.orderBy(suggestedRoutes, [
         (item) => item.route.length,
         (item) => item.totalDuration.asSeconds()
@@ -84,18 +86,13 @@ const brinksRepository = {
 
     const promises = [];
 
-    console.time('for');
     for (let i = 0; i < nodes.length; i += 1) {
       if (nodes[i].blocked) continue;
       promises.push(getDurationInTraffic(nodeRoot, nodes[i], currentDate, currentTime, i));
     }
 
     return Promise.all(promises)
-      .then((res) => {
-        console.log(res);
-        console.timeEnd('for');
-        return res;
-      })
+      .then((res) => res)
       .catch((err) => console.log(err));
   },
 };
