@@ -1,5 +1,4 @@
 /* eslint-disable no-param-reassign */
-/* eslint-disable no-console */
 /* eslint-disable no-continue */
 const moment = require('moment');
 const fetch = require('node-fetch');
@@ -64,26 +63,22 @@ const brinksService = {
   },
 
   /* description */
-  getTrafficTimes: ({
-    nodeRoot, nodes, currentDate, currentTime, unfulfilledNodes,
-  }) => {
+  getTrafficTimes: (nodeRoot, nodes, currentDate, currentTime) => {
     const baseUrl = 'https://router.hereapi.com/v8/routes?';
     const apiKey = process.env.API_KEY_TRAFFIC;
-
-    // TODO: esto puede ser un currentDate.clone();
+    const trafficTimes = [];
     const hourDeparture = currentDate
       .clone()
       .add(currentTime)
       .format('YYYY-MM-DDTHH:mm:ss');
 
-    const trafficTimes = [];
 
     for (let i = 0; i < nodes.length; i += 1) {
       if (nodes[i].blocked || nodes[i].unfulfilled) continue;
 
-      const nodeIsInvalid = brinksService.getValidNodes(nodeRoot, nodes[i], unfulfilledNodes, currentTime);
+      // const nodeIsInvalid = brinksService.getValidNodes(nodeRoot, nodes[i], unfulfilledNodes, currentTime);
       /* si el nodo es invalido lo excluyo de los query de traffic */
-      if (nodeIsInvalid) continue;
+      // if (nodeIsInvalid) continue;
 
       trafficTimes.push(
         fetch(`${baseUrl}transportMode=car&origin=${nodeRoot.coordinates.lat},${nodeRoot.coordinates.lng}&destination=${nodes[i].coordinates.lat},${nodes[i].coordinates.lng}&return=summary&departureTime=${hourDeparture}&apiKey=${apiKey}`)
@@ -163,7 +158,7 @@ const brinksService = {
   },
 
   /* description */
-  getNodesAvailabilitys: async (nodes) => {
+  getNodesAvailabilitys: (nodes) => {
     let count = false;
     for (let i = 0; i < nodes.length; i += 1) {
       if (nodes[i].blocked || nodes[i].unfulfilled) continue;
@@ -176,38 +171,36 @@ const brinksService = {
 
   /* Filtra los nodos sacando los que tienen todas las franja horarias vencidas
      y los que han sido marcados como "unfulfilled". */
-  getValidNodes: (nodeRoot, node, unfulfilledNodes, currentTime) => {
-    let nodeIsInvalid = true; // nodo invalido por default
+  getValidNodes: (nodeRoot, nodes, unfulfilledNodes, currentTime) => {
+    for (let i = 0; i < nodes.length; i += 1) {
+      if (nodes[i].blocked) continue; // nodo bloqueado
+      let nodeIsInvalid = true; // nodo invalido por default
 
-    /* se verifica que exista por lo menos una franja viva */
-    for (let i = 0; i < node.attentionHour.length; i += 1) {
-      /* rango inferior de la franja horaria */
-      const hourEnd = moment.duration(node.attentionHour[i].end);
-      hourEnd.subtract(currentTime); // restandole la hora actual
+      /* se verifica que exista por lo menos una franja viva */
+      for (let h = 0; h < nodes[i].attentionHour.length; h += 1) {
+        const hourEnd = moment.duration(nodes[i].attentionHour[h].end);
+        hourEnd.subtract(currentTime);
 
-      /* si la franja esta vencida "nodeIsInvalid" sigue en true */
-      if (hourEnd.asSeconds() < 0) continue;
+        /* si la franja esta vencida */
+        if (hourEnd.asSeconds() < 0) {
+          continue;
+        }
 
-      /* si "nodeIsInvalid" es false, hay por lo menos una franja viva */
-      nodeIsInvalid = false;
-      break; /* no necesito verificar mas si ya tengo la 1ra franja viva */
+        // hay por lo menos una franja viva
+        nodeIsInvalid = false;
+        break; // no necesito verificar mas por este nodo
+      }
+
+      if (nodeIsInvalid && !nodes[i].unfulfilled) {
+        nodes[i].unfulfilled = { currentTime, from: nodeRoot.description };
+      }
+
+      /* ya no se puede cumplir con este nodo */
+      if (nodeIsInvalid || nodes[i].unfulfilled) unfulfilledNodes.push(nodes[i]);
     }
 
-    /*
-    * si el nodo se le han vencido todas la franjas y no ha sido declarado
-    * anteriormente unfulfilled.
-    */
-    if (nodeIsInvalid && !node.unfulfilled) {
-      node.unfulfilled = { currentTime, from: nodeRoot.description };
-      unfulfilledNodes.push(node);
-    }
-
-    // TODO: quiero eliminar este if
-    /* ya no se puede cumplir con este nodo */
-    // if (nodeIsInvalid || node.unfulfilled) unfulfilledNodes.push(node);
-
-    /* respuesta indicando si el nodo es invalido o no */
-    return nodeIsInvalid;
+    /* solo los nodos validos */
+    return nodes.filter((node) => !node.unfulfilled);
   },
   /* selecciona el tiempo de trafico entre el nodo root y el nodo x. */
   selectTimeTrafficToNode: (node, trafficTimes) => {
@@ -230,15 +223,12 @@ const brinksService = {
       const node = nodes[i];
       if (nodeRoot.destination === node.description) {
         delete node.blocked;
-        // eslint-disable-next-line no-console
-        console.log(`${node.description} desbloqueado!`);
       }
     }
   },
 
   /* enviar a unfulfilled */
   goUnfulfilled: (node, nodeRoot, currentTime, timeInTraffic) => {
-    console.log(`${node.description}: sin franja horaria disp!`);
     node.unfulfilled = {
       currentTime,
       timeInTraffic,
@@ -306,13 +296,15 @@ const brinksService = {
   },
 
   /* nameless */
-  nameless: async ({
-    nodeRoot, route: nodes, hourDeparture, timePerStop, timeDeparture,
+  createRoute: async ({
+    nodeRoot, nodes, hourDeparture, timePerStop, timeDeparture,
   }) => {
     nodes = JSON.stringify(nodes);
     nodes = JSON.parse(nodes);
+
     /* tiempo actual del recorrido */
     let currentTime = hourDeparture.clone();
+
     /* nodos no cumplidos */
     let unfulfilledNodes = [];
 
@@ -329,22 +321,18 @@ const brinksService = {
     /* fecha actual, para api traffic */
     const currentDate = moment('00:00:00', 'HH:mm:ss');
 
+    /* vida del cliclo do */
+    let nextDo = false;
+
     do {
       /* separando los nodos validos de los unfulfilleds */
-      // nodes = brinksService.getValidNodes(nodeInit, nodes, unfulfilledNodes, currentTime);
+      nodes = brinksService.getValidNodes(nodeInit, nodes, unfulfilledNodes, currentTime);
 
-      if (nodes.length <= 0) {
-        console.log('CERO');
-        break;
-      }
+      /* si no hay nodos disp. dejo de iterar el do */
+      if (nodes.length <= 0) break;
 
-      const paramsGetTraffic = {
-        nodeRoot: nodeInit, nodes, currentDate, currentTime, unfulfilledNodes,
-      };
       /* tiempos desde nodo root contra todos los nodos disponibles */
-      const trafficTimes = await brinksService.getTrafficTimes(paramsGetTraffic);
-      console.log(trafficTimes);
-      console.log(`${nodeInit.description}`, nodes);
+      const trafficTimes = await brinksService.getTrafficTimes(nodeInit, nodes, currentDate, currentTime);
 
       /* Proximo nodo seleccionado */
       let indexNodeSelect;
@@ -398,7 +386,7 @@ const brinksService = {
         /* fin de identificacion del nodo mas urgente */
       }
 
-      console.log('Node urgente:', nodes[indexNodeSelect]);
+      // console.log('Node urgente:', nodes[indexNodeSelect]);
 
       // TODO: quitar if al volver el proceso a function
       if (indexNodeSelect !== undefined) {
@@ -413,7 +401,7 @@ const brinksService = {
         }
         /* fin de verificando que nodo urgente no hace incumplir nodo de cero franjas disponibles */
 
-        console.log('Node definitivo:', nodes[indexNodeSelect]);
+        // console.log('Node definitivo:', nodes[indexNodeSelect]);
 
         /* seleccionando el nodo y ajustando variables */
         currentTime = nodes[indexNodeSelect].analysis.hourDeparture.clone();
@@ -425,8 +413,12 @@ const brinksService = {
         /* fin de selección del nodo y ajustando variables */
         if (nodeInit.destination) brinksService.unlockDependentNodes(nodeInit, nodes);
       }
-      // TODO: este await en el condicional no me gusta
-    } while (await brinksService.getNodesAvailabilitys(nodes));
+      /* TODO: este await en el condicional no me gusta.
+      * puedo invocarla dentro const continueDo = getNodesAvailabilitys(nodes);
+      * y poner la variable
+      */
+      nextDo = brinksService.getNodesAvailabilitys(nodes);
+    } while (nextDo);
 
     unfulfilledNodes = unfulfilledNodes.concat(nodes);
 

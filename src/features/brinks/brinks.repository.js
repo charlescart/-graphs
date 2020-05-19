@@ -8,7 +8,7 @@ const {
   getDurationInTraffic,
   getTrafficTimes,
   getValidNodes,
-  nameless,
+  createRoute,
   analyticsTheNode,
 } = require('../../services/brinks.service');
 
@@ -29,48 +29,39 @@ const brinksRepository = {
     /* rutas */
     const routes = [];
 
-    // nodes = getValidNodes(nodeRoot, nodes, unfulfilledNodes, currentTime);
+    nodes = getValidNodes(nodeRoot, nodes, unfulfilledNodes, currentTime);
 
     /* fecha actual, para api traffic */
     const currentDate = moment('00:00:00', 'HH:mm:ss');
     /* tiempos desde nodo root contra todos los nodos disponibles */
-    const paramsTrafficTimes = {
-      nodeRoot, nodes, currentDate, currentTime, unfulfilledNodes,
-    };
-    const trafficTimes = await getTrafficTimes(paramsTrafficTimes);
-    console.log('times traffic:', trafficTimes);
+    const trafficTimes = await getTrafficTimes(nodeRoot, nodes, currentDate, currentTime);
 
     // TODO: probar caso cuando nodes se filtra y viene un array vacio
     for (let i = 0; i < nodes.length; i += 1) {
       /* si el nodo está bloqueado no lo analizo */
       if (nodes[i].blocked || nodes[i].unfulfilled) continue;
 
-      /* current node */
-      const node = nodes[i];
+      const node = nodes[i]; // current node
 
       /* analytics del node */
       analyticsTheNode(nodeRoot, node, trafficTimes, currentTime, timePerStop);
-      /* no tiene banda horaria disp. */
+
+      /* no tiene banda horaria disp */
       if (node.unfulfilled) continue;
 
-      console.log(node.analysis);
       const route = nodes.filter((item) => item !== node);
       route.unshift(node);
 
       const { hourDeparture } = node.analysis;
-      routes.push(nameless({
-        nodeRoot, route, hourDeparture, timePerStop, timeDeparture,
+      routes.push(createRoute({
+        nodeRoot, hourDeparture, timePerStop, timeDeparture, nodes: route,
       }));
     }
 
-    console.log('nodes:', nodes);
-    console.log('unfulfilled nodes general:', unfulfilledNodes);
-    console.log('Routes:', routes);
-
     return Promise.all(routes).then((suggestedRoutes) => {
-      // suggestedRoutes.forEach((node) => {
-      //   node.unfulfilledNodes = unfulfilledNodes.concat(node.unfulfilledNodes);
-      // });
+      suggestedRoutes.forEach((node) => {
+        node.unfulfilledNodes = unfulfilledNodes.concat(node.unfulfilledNodes);
+      });
 
       suggestedRoutes = _.orderBy(suggestedRoutes, [
         (item) => item.route.length,
