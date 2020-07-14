@@ -366,6 +366,13 @@ const brinksService = {
 
       // TODO: quitar if al volver el proceso a function
       if (indexNodeSelect !== undefined) {
+        /*
+        * TODO: cuando evaluo si hacer el proceso de seleccion definitiva,
+        * hacerlo si se cumple con los siguiente:
+        * si no es el nodo de la prioridad mas baja de entre los evaluados
+        * y si su numero de bandas horarias disponibles es mayor que cero
+        */
+
         /* verificando que nodo urgente no hace incumplir con nodos de cero franjas disponibles */
         const { numberBands } = nodes[indexNodeSelect].analysis;
         // TODO: indexNodeSelect !== undefined, es innecesaria por lo visto.
