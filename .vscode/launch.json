@@ -7,7 +7,7 @@
         {
             "type": "node",
             "request": "launch",
-            "name": "Brinks",
+            "name": "Hackaflow",
             "skipFiles": [
                 "<node_internals>/**"
             ],

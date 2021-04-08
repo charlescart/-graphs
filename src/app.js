@@ -27,7 +27,7 @@ app.get('/', (req, res) => {
 });
 
 /* features */
-require('./features/brinks/brinks.router')(app);
+require('./features/hackaflow/hackaflow.router')(app);
 
 app.use((err, req, res, next) => {
   handleError(err, res, req);
